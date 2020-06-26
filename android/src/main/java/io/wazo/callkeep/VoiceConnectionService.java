@@ -26,8 +26,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.speech.tts.Voice;
-import android.support.annotation.Nullable;
-import android.support.v4.content.LocalBroadcastManager;
+import androidx.annotation.Nullable;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 import android.telecom.CallAudioState;
 import android.telecom.Connection;
 import android.telecom.ConnectionRequest;
@@ -40,6 +40,10 @@ import android.util.Log;
 import android.app.ActivityManager;
 import android.app.ActivityManager.RunningTaskInfo;
 
+import com.facebook.react.HeadlessJsTaskService;
+import com.facebook.react.bridge.ReactContext;
+import com.facebook.react.common.LifecycleState;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -49,13 +53,20 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-import static io.wazo.callkeep.Constants.ACTION_AUDIO_SESSION;
-import static io.wazo.callkeep.Constants.ACTION_ONGOING_CALL;
-import static io.wazo.callkeep.Constants.ACTION_CHECK_REACHABILITY;
-import static io.wazo.callkeep.Constants.ACTION_WAKE_APP;
-import static io.wazo.callkeep.Constants.EXTRA_CALLER_NAME;
-import static io.wazo.callkeep.Constants.EXTRA_CALL_NUMBER;
-import static io.wazo.callkeep.Constants.EXTRA_CALL_UUID;
+import static io.wazo.callkeep.RNCallKeepModule.ACTION_ANSWER_CALL;
+import static io.wazo.callkeep.RNCallKeepModule.ACTION_AUDIO_SESSION;
+import static io.wazo.callkeep.RNCallKeepModule.ACTION_DTMF_TONE;
+import static io.wazo.callkeep.RNCallKeepModule.ACTION_END_CALL;
+import static io.wazo.callkeep.RNCallKeepModule.ACTION_HOLD_CALL;
+import static io.wazo.callkeep.RNCallKeepModule.ACTION_MUTE_CALL;
+import static io.wazo.callkeep.RNCallKeepModule.ACTION_ONGOING_CALL;
+import static io.wazo.callkeep.RNCallKeepModule.ACTION_UNHOLD_CALL;
+import static io.wazo.callkeep.RNCallKeepModule.ACTION_UNMUTE_CALL;
+import static io.wazo.callkeep.RNCallKeepModule.ACTION_CHECK_REACHABILITY;
+import static io.wazo.callkeep.RNCallKeepModule.EXTRA_CALLER_NAME;
+import static io.wazo.callkeep.RNCallKeepModule.EXTRA_CALL_NUMBER;
+import static io.wazo.callkeep.RNCallKeepModule.EXTRA_CALL_UUID;
+import static io.wazo.callkeep.RNCallKeepModule.handle;
 
 // @see https://github.com/kbagchiGWC/voice-quickstart-android/blob/9a2aff7fbe0d0a5ae9457b48e9ad408740dfb968/exampleConnectionService/src/main/java/com/twilio/voice/examples/connectionservice/VoiceConnectionService.java
 @TargetApi(Build.VERSION_CODES.M)
@@ -65,7 +76,6 @@ public class VoiceConnectionService extends ConnectionService {
     private static Boolean isReachable;
     private static String notReachableCallUuid;
     private static ConnectionRequest currentConnectionRequest;
-    private static PhoneAccountHandle phoneAccountHandle;
     private static String TAG = "RNCK:VoiceConnectionService";
     public static Map<String, VoiceConnection> currentConnections = new HashMap<>();
     public static Boolean hasOutgoingCall = false;
@@ -86,10 +96,6 @@ public class VoiceConnectionService extends ConnectionService {
         isAvailable = false;
         currentConnectionRequest = null;
         currentConnectionService = this;
-    }
-
-    public static void setPhoneAccountHandle(PhoneAccountHandle phoneAccountHandle) {
-        VoiceConnectionService.phoneAccountHandle = phoneAccountHandle;
     }
 
     public static void setAvailable(Boolean value) {
@@ -190,11 +196,19 @@ public class VoiceConnectionService extends ConnectionService {
     }
 
     private void wakeUpApplication(String uuid, String number, String displayName) {
-        HashMap<String, String> extrasMap = new HashMap();
-        extrasMap.put(EXTRA_CALL_UUID, uuid);
-        extrasMap.put(EXTRA_CALLER_NAME, displayName);
-        extrasMap.put(EXTRA_CALL_NUMBER, number);
-        sendCallRequestToActivity(ACTION_WAKE_APP, extrasMap);
+        Intent headlessIntent = new Intent(
+            this.getApplicationContext(),
+            RNCallKeepBackgroundMessagingService.class
+        );
+        headlessIntent.putExtra("callUUID", uuid);
+        headlessIntent.putExtra("name", displayName);
+        headlessIntent.putExtra("handle", number);
+        Log.d(TAG, "wakeUpApplication: " + uuid + ", number : " + number + ", displayName:" + displayName);
+
+        ComponentName name = this.getApplicationContext().startService(headlessIntent);
+        if (name != null) {
+          HeadlessJsTaskService.acquireWakeLockNow(this.getApplicationContext());
+        }
     }
 
     private void wakeUpAfterReachabilityTimeout(ConnectionRequest request) {
@@ -257,7 +271,9 @@ public class VoiceConnectionService extends ConnectionService {
         VoiceConnection voiceConnection1 = (VoiceConnection) connection1;
         VoiceConnection voiceConnection2 = (VoiceConnection) connection2;
 
-        VoiceConference voiceConference = new VoiceConference(phoneAccountHandle);
+        PhoneAccountHandle phoneAccountHandle = RNCallKeepModule.handle;
+
+        VoiceConference voiceConference = new VoiceConference(handle);
         voiceConference.addConnection(voiceConnection1);
         voiceConference.addConnection(voiceConnection2);
 

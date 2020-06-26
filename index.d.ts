@@ -1,4 +1,4 @@
-export type Events =
+export type Events = 
   'didReceiveStartCallAction' |
   'answerCall' |
   'endCall' |
@@ -43,7 +43,7 @@ export default class RNCallKeep {
 
   }
 
-  static removeEventListener(type: Events) {
+  static removeEventListener(type: Events, handler: (args: any) => void) {
 
   }
 
@@ -114,9 +114,7 @@ export default class RNCallKeep {
   static setReachable() {
 
   }
-  static isCallActive(uuid: string): Promise<boolean> {
 
-  }
   /**
      * @description supportConnectionService method is available only on Android.
   */

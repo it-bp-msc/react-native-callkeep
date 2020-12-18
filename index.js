@@ -22,6 +22,7 @@ class RNCallKeep {
 
   constructor() {
     this._callkeepEventHandlers = new Map();
+    this.renders = 0;
   }
 
   addEventListener = (type, handler) => {
@@ -58,7 +59,10 @@ class RNCallKeep {
 
   displayIncomingCall = (uuid, handle, localizedCallerName, handleType = 'number', hasVideo = false) => {
     if (!isIOS) {
-      RNCallKeepModule.displayIncomingCall(uuid, handle, localizedCallerName);
+      this.renders++;
+      if(this.renders === 1) {
+        RNCallKeepModule.displayIncomingCall(uuid, handle, localizedCallerName);
+      }
       return;
     }
 
@@ -67,6 +71,8 @@ class RNCallKeep {
 
   answerIncomingCall = (uuid) => {
     if (!isIOS) {
+      this.renders++;
+      //console.log("answerIncomingCall", {renders: this.renders}, uuid)
       RNCallKeepModule.answerIncomingCall(uuid);
     }
   };
@@ -108,9 +114,15 @@ class RNCallKeep {
     }
   };
 
-  endCall = (uuid) => RNCallKeepModule.endCall(uuid);
+  endCall = (uuid) => {
+    RNCallKeepModule.endCall(uuid)
+    this.renders = 0; 
+  };
 
-  endAllCalls = () => RNCallKeepModule.endAllCalls();
+  endAllCalls = () => { 
+    RNCallKeepModule.endAllCalls();
+    this.renders = 0;
+  }
 
   supportConnectionService = () => supportConnectionService;
 
@@ -179,14 +191,17 @@ class RNCallKeep {
     resolve(RNCallKeepModule.setup(options));
   });
 
-  _setupAndroid = async (options) => {
-    RNCallKeepModule.setup(options);
-
-    const showAccountAlert = await RNCallKeepModule.checkPhoneAccountPermission(options.additionalPermissions || []);
-    const shouldOpenAccounts = await this._alert(options, showAccountAlert);
-
-    if (shouldOpenAccounts) {
-      RNCallKeepModule.openPhoneAccounts();
+  _setupAndroid = async (options) => {    
+    try {
+      RNCallKeepModule.setup(options);
+      const showAccountAlert = await RNCallKeepModule.checkPhoneAccountPermission(options.additionalPermissions || []);
+      const shouldOpenAccounts = await this._alert(options, showAccountAlert);
+      if (shouldOpenAccounts) {
+        RNCallKeepModule.openPhoneAccounts();
+      }
+      
+    } catch (error) {
+      console.log(error.message);
     }
   };
 
@@ -203,7 +218,6 @@ class RNCallKeep {
     if (!condition) {
       return resolve(false);
     }
-
     Alert.alert(
       options.alertTitle,
       options.alertDescription,

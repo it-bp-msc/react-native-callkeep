@@ -1,6 +1,6 @@
 # Migration from CallKeep v2 to v3
 
-Thanks to the Sangoma team, CallKeep now allows multi calls through native UI. 
+Thanks to the Sangoma team, CallKeep now allows multi calls through native UI.
 Here's how to upgrade your codebase for this new version.
 
 ## Common

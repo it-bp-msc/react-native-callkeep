@@ -71,8 +71,10 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.ReadableArray;
 import com.facebook.react.bridge.ReadableMap;
+import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter;
+import com.facebook.react.modules.permissions.PermissionsModule;
 import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -120,7 +122,9 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule {
 
   @ReactMethod
   public void setup(ReadableMap options) {
+    Log.d(TAG, "setup");
     VoiceConnectionService.setAvailable(false);
+    VoiceConnectionService.setInitialized(true);
     this._settings = options;
 
     if (isConnectionServiceAvailable()) {
@@ -137,6 +141,8 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule {
     if (!isConnectionServiceAvailable()) {
       return;
     }
+
+    Log.d(TAG, "registerPhoneAccount");
 
     this.registerPhoneAccount(this.getAppContext());
   }
@@ -164,7 +170,12 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule {
 
     Log.d(
       TAG,
-      "displayIncomingCall number: " + number + ", callerName: " + callerName
+      "displayIncomingCall, uuid: " +
+      uuid +
+      ", number: " +
+      number +
+      ", callerName: " +
+      callerName
     );
 
     Bundle extras = new Bundle();
@@ -179,6 +190,7 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule {
 
   @ReactMethod
   public void answerIncomingCall(String uuid) {
+    Log.d(TAG, "answerIncomingCall, uuid: " + uuid);
     if (!isConnectionServiceAvailable() || !hasPhoneAccount()) {
       return;
     }
@@ -193,6 +205,16 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule {
 
   @ReactMethod
   public void startCall(String uuid, String number, String callerName) {
+    Log.d(
+      TAG,
+      "startCall called, uuid: " +
+      uuid +
+      ", number: " +
+      number +
+      ", callerName: " +
+      callerName
+    );
+
     if (
       !isConnectionServiceAvailable() ||
       !hasPhoneAccount() ||
@@ -201,8 +223,6 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule {
     ) {
       return;
     }
-
-    Log.d(TAG, "startCall number: " + number + ", callerName: " + callerName);
 
     Bundle extras = new Bundle();
     Uri uri = Uri.fromParts(PhoneAccount.SCHEME_TEL, number, null);
@@ -215,12 +235,14 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule {
     extras.putParcelable(TelecomManager.EXTRA_PHONE_ACCOUNT_HANDLE, handle);
     extras.putParcelable(TelecomManager.EXTRA_OUTGOING_CALL_EXTRAS, callExtras);
 
+    Log.d(TAG, "startCall, uuid: " + uuid);
+
     telecomManager.placeCall(uri, extras);
   }
 
   @ReactMethod
   public void endCall(String uuid) {
-    Log.d(TAG, "endCall called");
+    Log.d(TAG, "endCall called, uuid: " + uuid);
     if (!isConnectionServiceAvailable() || !hasPhoneAccount()) {
       return;
     }
@@ -231,7 +253,7 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule {
     }
     conn.onDisconnect();
 
-    Log.d(TAG, "endCall executed");
+    Log.d(TAG, "endCall executed, uuid: " + uuid);
   }
 
   @ReactMethod
@@ -274,7 +296,7 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule {
       optionalPermsArr[i] = optionalPermissions.getString(i);
     }
 
-    String[] allPermissions = Arrays.copyOf(
+    final String[] allPermissions = Arrays.copyOf(
       permissions,
       permissions.length + optionalPermsArr.length
     );
@@ -289,11 +311,102 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule {
     hasPhoneAccountPromise = promise;
 
     if (!this.hasPermissions()) {
-      requestPermissions(
-        currentActivity,
-        allPermissions,
-        REQUEST_READ_PHONE_STATE
-      );
+      WritableArray allPermissionaw = Arguments.createArray();
+      for (String allPermission : allPermissions) {
+        allPermissionaw.pushString(allPermission);
+      }
+
+      getReactApplicationContext()
+        .getNativeModule(PermissionsModule.class)
+        .requestMultiplePermissions(
+          allPermissionaw,
+          new Promise() {
+            @Override
+            public void resolve(@Nullable Object value) {
+              WritableMap grantedPermission = (WritableMap) value;
+              int[] grantedResult = new int[allPermissions.length];
+              for (int i = 0; i < allPermissions.length; ++i) {
+                String perm = allPermissions[i];
+                grantedResult[i] =
+                  grantedPermission.getString(perm).equals("granted")
+                    ? PackageManager.PERMISSION_GRANTED
+                    : PackageManager.PERMISSION_DENIED;
+              }
+              RNCallKeepModule.onRequestPermissionsResult(
+                REQUEST_READ_PHONE_STATE,
+                allPermissions,
+                grantedResult
+              );
+            }
+
+            @Override
+            public void reject(String code, String message) {
+              hasPhoneAccountPromise.resolve(false);
+            }
+
+            @Override
+            public void reject(String code, Throwable throwable) {
+              hasPhoneAccountPromise.resolve(false);
+            }
+
+            @Override
+            public void reject(
+              String code,
+              String message,
+              Throwable throwable
+            ) {
+              hasPhoneAccountPromise.resolve(false);
+            }
+
+            @Override
+            public void reject(Throwable throwable) {
+              hasPhoneAccountPromise.resolve(false);
+            }
+
+            @Override
+            public void reject(Throwable throwable, WritableMap userInfo) {
+              hasPhoneAccountPromise.resolve(false);
+            }
+
+            @Override
+            public void reject(String code, @NonNull WritableMap userInfo) {
+              hasPhoneAccountPromise.resolve(false);
+            }
+
+            @Override
+            public void reject(
+              String code,
+              Throwable throwable,
+              WritableMap userInfo
+            ) {
+              hasPhoneAccountPromise.resolve(false);
+            }
+
+            @Override
+            public void reject(
+              String code,
+              String message,
+              @NonNull WritableMap userInfo
+            ) {
+              hasPhoneAccountPromise.resolve(false);
+            }
+
+            @Override
+            public void reject(
+              String code,
+              String message,
+              Throwable throwable,
+              WritableMap userInfo
+            ) {
+              hasPhoneAccountPromise.resolve(false);
+            }
+
+            @Override
+            public void reject(String message) {
+              hasPhoneAccountPromise.resolve(false);
+            }
+          }
+        );
       return;
     }
 
@@ -322,6 +435,14 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule {
 
   @ReactMethod
   public void setOnHold(String uuid, boolean shouldHold) {
+    Log.d(
+      TAG,
+      "setOnHold, uuid: " +
+      uuid +
+      ", shouldHold: " +
+      (shouldHold ? "true" : "false")
+    );
+
     Connection conn = VoiceConnectionService.getConnection(uuid);
     if (conn == null) {
       return;
@@ -336,6 +457,7 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule {
 
   @ReactMethod
   public void reportEndCallWithUUID(String uuid, int reason) {
+    Log.d(TAG, "reportEndCallWithUUID, uuid: " + uuid + ", reason: " + reason);
     if (!isConnectionServiceAvailable() || !hasPhoneAccount()) {
       return;
     }
@@ -351,6 +473,7 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule {
 
   @ReactMethod
   public void rejectCall(String uuid) {
+    Log.d(TAG, "rejectCall, uuid: " + uuid);
     if (!isConnectionServiceAvailable() || !hasPhoneAccount()) {
       return;
     }
@@ -365,6 +488,13 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule {
 
   @ReactMethod
   public void setMutedCall(String uuid, boolean shouldMute) {
+    Log.d(
+      TAG,
+      "setMutedCall, uuid: " +
+      uuid +
+      ", shouldMute: " +
+      (shouldMute ? "true" : "false")
+    );
     Connection conn = VoiceConnectionService.getConnection(uuid);
     if (conn == null) {
       return;
@@ -390,8 +520,29 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule {
     conn.onCallAudioStateChanged(newAudioState);
   }
 
+  /**
+   * toggle audio route for speaker via connection service function
+   * @param uuid
+   * @param routeSpeaker
+   */
+  @ReactMethod
+  public void toggleAudioRouteSpeaker(String uuid, boolean routeSpeaker) {
+    VoiceConnection conn = (VoiceConnection) VoiceConnectionService.getConnection(
+      uuid
+    );
+    if (conn == null) {
+      return;
+    }
+    if (routeSpeaker) {
+      conn.setAudioRoute(CallAudioState.ROUTE_SPEAKER);
+    } else {
+      conn.setAudioRoute(CallAudioState.ROUTE_EARPIECE);
+    }
+  }
+
   @ReactMethod
   public void sendDTMF(String uuid, String key) {
+    Log.d(TAG, "sendDTMF, uuid: " + uuid + ", key: " + key);
     Connection conn = VoiceConnectionService.getConnection(uuid);
     if (conn == null) {
       return;
@@ -402,6 +553,15 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule {
 
   @ReactMethod
   public void updateDisplay(String uuid, String displayName, String uri) {
+    Log.d(
+      TAG,
+      "updateDisplay, uuid: " +
+      uuid +
+      ", displayName: " +
+      displayName +
+      ", uri: " +
+      uri
+    );
     Connection conn = VoiceConnectionService.getConnection(uuid);
     if (conn == null) {
       return;
@@ -452,6 +612,7 @@ public class RNCallKeepModule extends ReactContextBaseJavaModule {
 
   @ReactMethod
   public void setCurrentCallActive(String uuid) {
+    Log.d(TAG, "setCurrentCallActive, uuid: " + uuid);
     Connection conn = VoiceConnectionService.getConnection(uuid);
     if (conn == null) {
       return;
